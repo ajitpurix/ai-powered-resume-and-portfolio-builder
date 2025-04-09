@@ -3,14 +3,13 @@
 import { useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import Button from '@/app/components/ui/Button';
-import UserButton from '../components/UserButton';
 import { useState, FormEvent } from 'react';
 
 export default function Dashboard() {
   const { user, isLoaded } = useUser();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isGeneratingResume, setIsGeneratingResume] = useState(false);
-  const [isGeneratingPortfolio, setIsGeneratingPortfolio] = useState(false);
+  const [isGeneratingModernPortfolio, setIsGeneratingModernPortfolio] = useState(false);
   const [resumeData, setResumeData] = useState({
     fullName: '',
     email: '',
@@ -22,7 +21,7 @@ export default function Dashboard() {
     skills: '',
     targetRole: ''
   });
-  const [portfolioData, setPortfolioData] = useState({
+  const [modernPortfolioData, setModernPortfolioData] = useState({
     fullName: '',
     professionalTitle: '',
     email: '',
@@ -30,12 +29,25 @@ export default function Dashboard() {
     aboutMe: '',
     projects: '',
     skills: '',
-    style: '',
+    theme: '',
     colorScheme: ''
   });
   const [generatedResume, setGeneratedResume] = useState('');
-  const [generatedPortfolio, setGeneratedPortfolio] = useState('');
+  const [generatedModernPortfolio, setGeneratedModernPortfolio] = useState('');
   const [error, setError] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisResults, setAnalysisResults] = useState({
+    resumeScore: 0,
+    portfolioScore: 0,
+    suggestions: [] as string[]
+  });
+  const [uploadedFiles, setUploadedFiles] = useState<{
+    resume: File | null;
+    portfolio: File | null;
+  }>({
+    resume: null,
+    portfolio: null
+  });
 
   if (!isLoaded) {
     return (
@@ -50,9 +62,9 @@ export default function Dashboard() {
     setResumeData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handlePortfolioChange = (e: any) => {
+  const handleModernPortfolioChange = (e: any) => {
     const { name, value } = e.target;
-    setPortfolioData(prev => ({ ...prev, [name]: value }));
+    setModernPortfolioData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleResumeSubmit = async (e: FormEvent) => {
@@ -83,31 +95,92 @@ export default function Dashboard() {
     }
   };
 
-  const handlePortfolioSubmit = async (e: FormEvent) => {
+  const handleModernPortfolioSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    setIsGeneratingPortfolio(true);
+    setIsGeneratingModernPortfolio(true);
     
     try {
-      const response = await fetch('/api/generate-portfolio', {
+      const response = await fetch('/api/generate-modern-portfolio', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(portfolioData),
+        body: JSON.stringify(modernPortfolioData),
       });
       
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate portfolio');
+        throw new Error(data.error || 'Failed to generate modern portfolio');
       }
       
-      setGeneratedPortfolio(data.html);
+      setGeneratedModernPortfolio(data.html);
     } catch (error: any) {
-      setError(error.message || 'An error occurred while generating your portfolio');
+      setError(error.message || 'An error occurred while generating your modern portfolio');
     } finally {
-      setIsGeneratingPortfolio(false);
+      setIsGeneratingModernPortfolio(false);
+    }
+  };
+
+  const handleFileUpload = (type: 'resume' | 'portfolio', file: File) => {
+    setUploadedFiles(prev => ({
+      ...prev,
+      [type]: file
+    }));
+  };
+
+  const handlePasteText = (type: 'resume' | 'portfolio', text: string) => {
+    // Create a text file from the pasted content
+    const file = new File([text], `${type}_content.txt`, { type: 'text/plain' });
+    setUploadedFiles(prev => ({
+      ...prev,
+      [type]: file
+    }));
+  };
+
+  const analyzeContent = async () => {
+    if (!uploadedFiles.resume && !uploadedFiles.portfolio) {
+      setError('Please upload or paste your resume or portfolio content');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setError('');
+
+    try {
+      // Create FormData to send files
+      const formData = new FormData();
+      if (uploadedFiles.resume) {
+        formData.append('resume', uploadedFiles.resume);
+      }
+      if (uploadedFiles.portfolio) {
+        formData.append('portfolio', uploadedFiles.portfolio);
+      }
+
+      // Make API call to analyze content
+      const response = await fetch('/api/analyze-content', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze content');
+      }
+
+      const data = await response.json();
+      
+      // Update analysis results
+      setAnalysisResults({
+        resumeScore: data.resumeScore || 0,
+        portfolioScore: data.portfolioScore || 0,
+        suggestions: data.suggestions || []
+      });
+
+    } catch (error: any) {
+      setError(error.message || 'An error occurred while analyzing your content');
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -119,13 +192,8 @@ export default function Dashboard() {
             <div className="text-2xl font-bold text-red-600">Visioon AI</div>
           </Link>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className="text-gray-300">
-                Welcome, {user?.firstName || 'User'}
-              </div>
-              <div className="relative">
-                <UserButton />
-              </div>
+            <div className="text-gray-300">
+              Welcome, {user?.firstName || 'User'}
             </div>
           </div>
         </div>
@@ -149,10 +217,16 @@ export default function Dashboard() {
                 AI Resume Builder
               </button>
               <button 
-                className={`p-2 rounded-md text-left ${activeTab === 'portfolio' ? 'bg-red-900/30 text-red-400' : 'hover:bg-neutral-800 text-gray-300'}`}
-                onClick={() => setActiveTab('portfolio')}
+                className={`p-2 rounded-md text-left ${activeTab === 'modern-portfolio' ? 'bg-red-900/30 text-red-400' : 'hover:bg-neutral-800 text-gray-300'}`}
+                onClick={() => setActiveTab('modern-portfolio')}
               >
-                AI Portfolio Builder
+                Modern Portfolio Builder
+              </button>
+              <button 
+                className={`p-2 rounded-md text-left ${activeTab === 'analysis' ? 'bg-red-900/30 text-red-400' : 'hover:bg-neutral-800 text-gray-300'}`}
+                onClick={() => setActiveTab('analysis')}
+              >
+                AI Analysis
               </button>
               <button 
                 className={`p-2 rounded-md text-left ${activeTab === 'profile' ? 'bg-red-900/30 text-red-400' : 'hover:bg-neutral-800 text-gray-300'}`}
@@ -199,10 +273,10 @@ export default function Dashboard() {
                         <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
                       </svg>
                     </div>
-                    <h2 className="text-xl font-semibold text-white">AI Portfolio Builder</h2>
+                    <h2 className="text-xl font-semibold text-white">Modern Portfolio Builder</h2>
                   </div>
-                  <p className="text-gray-400 mb-4">Create an impressive portfolio website with Gemini AI. Our advanced AI will generate a custom portfolio based on your projects and skills.</p>
-                  <Button onClick={() => setActiveTab('portfolio')} className="bg-red-800 hover:bg-red-900 text-white">Create Portfolio</Button>
+                  <p className="text-gray-400 mb-4">Create a stunning modern portfolio website with advanced animations and responsive design. Fill in your details below and let our AI craft the perfect portfolio for you.</p>
+                  <Button onClick={() => setActiveTab('modern-portfolio')} className="bg-red-800 hover:bg-red-900 text-white">Create Modern Portfolio</Button>
                 </div>
               </div>
             </div>
@@ -355,73 +429,73 @@ export default function Dashboard() {
             </div>
           )}
           
-          {activeTab === 'portfolio' && (
+          {activeTab === 'modern-portfolio' && (
             <div className="bg-neutral-800 shadow-lg rounded-lg p-6 border border-red-900/30">
-              <h1 className="text-2xl font-bold text-white mb-6">AI Portfolio Builder</h1>
-              <p className="text-gray-300 mb-6">Create a stunning portfolio website with the power of AI. Fill in your details below and let our AI craft the perfect portfolio for you.</p>
+              <h1 className="text-2xl font-bold text-white mb-6">Modern Portfolio Builder</h1>
+              <p className="text-gray-300 mb-6">Create a stunning modern portfolio website with advanced animations and responsive design. Fill in your details below and let our AI craft the perfect portfolio for you.</p>
               
-              {generatedPortfolio ? (
+              {generatedModernPortfolio ? (
                 <div className="space-y-6">
-                  <div className="prose prose-invert max-w-none bg-white text-black p-6 rounded-lg" dangerouslySetInnerHTML={{ __html: generatedPortfolio }} />
+                  <div className="prose prose-invert max-w-none bg-white text-black p-6 rounded-lg" dangerouslySetInnerHTML={{ __html: generatedModernPortfolio }} />
                   <div className="flex justify-between">
                     <Button 
                       variant="outline" 
-                      onClick={() => setGeneratedPortfolio('')}
+                      onClick={() => setGeneratedModernPortfolio('')}
                       className="bg-neutral-700 text-white hover:bg-neutral-600 border-red-900/30"
                     >
                       Edit Information
                     </Button>
                     <Button
                       onClick={() => {
-                        const blob = new Blob([generatedPortfolio], { type: 'text/html' });
+                        const blob = new Blob([generatedModernPortfolio], { type: 'text/html' });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = `${portfolioData.fullName.replace(/\s+/g, '_')}_Portfolio.html`;
+                        a.download = `${modernPortfolioData.fullName.replace(/\s+/g, '_')}_Modern_Portfolio.html`;
                         document.body.appendChild(a);
                         a.click();
                         document.body.removeChild(a);
                       }}
                       className="bg-red-800 hover:bg-red-900 text-white"
                     >
-                      Download Portfolio
+                      Download Modern Portfolio
                     </Button>
                   </div>
                 </div>
               ) : (
-                <form className="space-y-6" onSubmit={handlePortfolioSubmit}>
+                <form className="space-y-6" onSubmit={handleModernPortfolioSubmit}>
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-1">Personal Information</label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <input 
                         type="text" 
                         name="fullName"
-                        value={portfolioData.fullName}
-                        onChange={handlePortfolioChange}
+                        value={modernPortfolioData.fullName}
+                        onChange={handleModernPortfolioChange}
                         placeholder="Full Name" 
                         className="px-4 py-2 bg-neutral-700 border border-red-900/30 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-white" 
                       />
                       <input 
                         type="text" 
                         name="professionalTitle"
-                        value={portfolioData.professionalTitle}
-                        onChange={handlePortfolioChange}
+                        value={modernPortfolioData.professionalTitle}
+                        onChange={handleModernPortfolioChange}
                         placeholder="Professional Title" 
                         className="px-4 py-2 bg-neutral-700 border border-red-900/30 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-white" 
                       />
                       <input 
                         type="email" 
                         name="email"
-                        value={portfolioData.email}
-                        onChange={handlePortfolioChange}
+                        value={modernPortfolioData.email}
+                        onChange={handleModernPortfolioChange}
                         placeholder="Email" 
                         className="px-4 py-2 bg-neutral-700 border border-red-900/30 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-white" 
                       />
                       <input 
                         type="text" 
                         name="location"
-                        value={portfolioData.location}
-                        onChange={handlePortfolioChange}
+                        value={modernPortfolioData.location}
+                        onChange={handleModernPortfolioChange}
                         placeholder="Location" 
                         className="px-4 py-2 bg-neutral-700 border border-red-900/30 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-white" 
                       />
@@ -433,8 +507,8 @@ export default function Dashboard() {
                     <textarea 
                       rows={3} 
                       name="aboutMe"
-                      value={portfolioData.aboutMe}
-                      onChange={handlePortfolioChange}
+                      value={modernPortfolioData.aboutMe}
+                      onChange={handleModernPortfolioChange}
                       placeholder="Introduce yourself and your professional background" 
                       className="w-full px-4 py-2 bg-neutral-700 border border-red-900/30 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-white"
                     ></textarea>
@@ -445,8 +519,8 @@ export default function Dashboard() {
                     <textarea 
                       rows={4} 
                       name="projects"
-                      value={portfolioData.projects}
-                      onChange={handlePortfolioChange}
+                      value={modernPortfolioData.projects}
+                      onChange={handleModernPortfolioChange}
                       placeholder="Describe your projects (Format: Project Name, Description, Technologies Used, Link)" 
                       className="w-full px-4 py-2 bg-neutral-700 border border-red-900/30 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-white"
                     ></textarea>
@@ -457,26 +531,28 @@ export default function Dashboard() {
                     <input 
                       type="text" 
                       name="skills"
-                      value={portfolioData.skills}
-                      onChange={handlePortfolioChange}
+                      value={modernPortfolioData.skills}
+                      onChange={handleModernPortfolioChange}
                       placeholder="List your technical and creative skills, separated by commas" 
                       className="w-full px-4 py-2 bg-neutral-700 border border-red-900/30 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-white" 
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Portfolio Style</label>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Portfolio Theme</label>
                     <select 
                       className="w-full px-4 py-2 bg-neutral-700 border border-red-900/30 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-white"
-                      name="style"
-                      value={portfolioData.style}
-                      onChange={handlePortfolioChange}
+                      name="theme"
+                      value={modernPortfolioData.theme}
+                      onChange={handleModernPortfolioChange}
                     >
-                      <option value="">Select a style</option>
+                      <option value="">Select a theme</option>
                       <option value="minimalist">Minimalist</option>
                       <option value="creative">Creative</option>
                       <option value="professional">Professional</option>
-                      <option value="technical">Technical</option>
+                      <option value="dark mode">Dark Mode</option>
+                      <option value="glassmorphism">Glassmorphism</option>
+                      <option value="neumorphism">Neumorphism</option>
                     </select>
                   </div>
                   
@@ -485,28 +561,182 @@ export default function Dashboard() {
                     <select 
                       className="w-full px-4 py-2 bg-neutral-700 border border-red-900/30 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-white"
                       name="colorScheme"
-                      value={portfolioData.colorScheme}
-                      onChange={handlePortfolioChange}
+                      value={modernPortfolioData.colorScheme}
+                      onChange={handleModernPortfolioChange}
                     >
                       <option value="">Select a color scheme</option>
                       <option value="red">Red</option>
-                      <option value="black">Black</option>
-                      <option value="red-black">Red & Black</option>
+                      <option value="blue">Blue</option>
+                      <option value="green">Green</option>
+                      <option value="purple">Purple</option>
+                      <option value="orange">Orange</option>
                       <option value="monochrome">Monochrome</option>
+                      <option value="gradient">Gradient</option>
                     </select>
                   </div>
                   
                   <div className="flex justify-end">
                     <Button 
                       type="submit" 
-                      disabled={isGeneratingPortfolio}
+                      disabled={isGeneratingModernPortfolio}
                       className="bg-red-800 hover:bg-red-900 text-white disabled:bg-red-900/50"
                     >
-                      {isGeneratingPortfolio ? 'Generating...' : 'Generate Portfolio with AI'}
+                      {isGeneratingModernPortfolio ? 'Generating...' : 'Generate Modern Portfolio with AI'}
                     </Button>
                   </div>
                 </form>
               )}
+            </div>
+          )}
+          
+          {activeTab === 'analysis' && (
+            <div className="bg-neutral-800 shadow-lg rounded-lg p-6 border border-red-900/30">
+              <h1 className="text-2xl font-bold text-white mb-6">AI Resume & Portfolio Analysis</h1>
+              <p className="text-gray-300 mb-6">Get instant feedback and suggestions to improve your resume and portfolio.</p>
+              
+              <div className="grid md:grid-cols-2 gap-8">
+                {/* Chat Interface */}
+                <div className="bg-neutral-900 p-8 rounded-xl shadow-sm border border-red-900">
+                  <div className="flex items-center mb-6">
+                    <div className="w-12 h-12 bg-red-900/30 rounded-full flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                      </svg>
+                    </div>
+                    <div className="ml-4">
+                      <h3 className="text-xl font-semibold text-white">Smart Analysis Chat</h3>
+                      <p className="text-gray-400">Get instant feedback on your resume & portfolio</p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div className="bg-black/50 p-4 rounded-lg">
+                      <p className="text-gray-300">Upload your resume and portfolio to get started</p>
+                    </div>
+                    <div className="flex space-x-4">
+                      <label className="flex-1 bg-red-900/30 hover:bg-red-900/50 text-white px-4 py-2 rounded-lg border border-red-900 flex items-center justify-center cursor-pointer">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        Upload Files
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept=".pdf,.doc,.docx,.txt"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              handleFileUpload('resume', file);
+                            }
+                          }}
+                        />
+                      </label>
+                      <button 
+                        className="flex-1 bg-red-900/30 hover:bg-red-900/50 text-white px-4 py-2 rounded-lg border border-red-900 flex items-center justify-center"
+                        onClick={() => {
+                          const text = prompt('Paste your resume or portfolio content here:');
+                          if (text) {
+                            handlePasteText('resume', text);
+                          }
+                        }}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2z" />
+                        </svg>
+                        Paste Text
+                      </button>
+                    </div>
+                    {uploadedFiles.resume && (
+                      <div className="bg-black/30 p-3 rounded-lg flex items-center justify-between">
+                        <span className="text-gray-300 text-sm truncate">
+                          {uploadedFiles.resume.name}
+                        </span>
+                        <button 
+                          className="text-red-500 hover:text-red-400"
+                          onClick={() => setUploadedFiles(prev => ({ ...prev, resume: null }))}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                    <button
+                      className="w-full bg-red-800 hover:bg-red-900 text-white px-4 py-2 rounded-lg flex items-center justify-center"
+                      onClick={analyzeContent}
+                      disabled={isAnalyzing || (!uploadedFiles.resume && !uploadedFiles.portfolio)}
+                    >
+                      {isAnalyzing ? (
+                        <>
+                          <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Analyzing...
+                        </>
+                      ) : (
+                        'Analyze Content'
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Analysis Results */}
+                <div className="bg-neutral-900 p-8 rounded-xl shadow-sm border border-red-900">
+                  <h3 className="text-2xl font-semibold text-white mb-6">Analysis Results</h3>
+                  
+                  {analysisResults.resumeScore > 0 || analysisResults.portfolioScore > 0 ? (
+                    <>
+                      {/* Resume Score */}
+                      {analysisResults.resumeScore > 0 && (
+                        <div className="mb-8">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-gray-300">Resume Score</span>
+                            <span className="text-2xl font-bold text-red-600">{analysisResults.resumeScore}/100</span>
+                          </div>
+                          <div className="w-full bg-black/50 rounded-full h-2">
+                            <div className="bg-red-600 h-2 rounded-full" style={{ width: `${analysisResults.resumeScore}%` }}></div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Portfolio Score */}
+                      {analysisResults.portfolioScore > 0 && (
+                        <div className="mb-8">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-gray-300">Portfolio Score</span>
+                            <span className="text-2xl font-bold text-red-600">{analysisResults.portfolioScore}/100</span>
+                          </div>
+                          <div className="w-full bg-black/50 rounded-full h-2">
+                            <div className="bg-red-600 h-2 rounded-full" style={{ width: `${analysisResults.portfolioScore}%` }}></div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Suggestions */}
+                      {analysisResults.suggestions.length > 0 && (
+                        <div>
+                          <h4 className="text-lg font-semibold text-white mb-4">Key Suggestions</h4>
+                          <ul className="space-y-3">
+                            {analysisResults.suggestions.map((suggestion, index) => (
+                              <li key={index} className="flex items-start">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-600 mt-1 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span className="text-gray-300">{suggestion}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-gray-400">Upload your content to see analysis results</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
           
