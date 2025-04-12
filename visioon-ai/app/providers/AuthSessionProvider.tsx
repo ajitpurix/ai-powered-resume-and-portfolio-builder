@@ -1,21 +1,18 @@
 'use client';
 
 import { ReactNode } from 'react';
-import { SessionProvider, SessionProviderProps } from 'next-auth/react';
-import { AuthProvider } from '../context/AuthContext';
+import { ClerkProvider } from '@clerk/nextjs';
 
-interface AuthSessionProviderProps extends Partial<SessionProviderProps> {
+interface AuthSessionProviderProps {
   children: ReactNode;
 }
 
 export default function AuthSessionProvider({ 
-  children,
-  session,
-  ...props
+  children 
 }: AuthSessionProviderProps) {
   return (
-    <SessionProvider session={session} {...props}>
-      <AuthProvider>{children}</AuthProvider>
-    </SessionProvider>
+    <ClerkProvider>
+      {children}
+    </ClerkProvider>
   );
 }
